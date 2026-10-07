@@ -1,0 +1,773 @@
+<title>DocVerify Pipeline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+/* ── Layout: sidebar nav + main content area ── */
+:root {
+  --bg:        #f4f6f8;
+  --surface:   #ffffff;
+  --surface2:  #f0f2f5;
+  --border:    #dce1e8;
+  --border2:   #e8eaed;
+  --fg:        #0f1923;
+  --fg2:       #4a5568;
+  --fg3:       #8896a8;
+  --accent:    #0057d9;
+  --accent-bg: #eef3fd;
+  --green:     #0d8c4e;
+  --green-bg:  #eafaf2;
+  --amber:     #b45309;
+  --amber-bg:  #fef9ee;
+  --red:       #c0392b;
+  --red-bg:    #fef2f1;
+  --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #0b0f14;
+    --surface:   #131a22;
+    --surface2:  #1a2330;
+    --border:    #232f3e;
+    --border2:   #1e2a38;
+    --fg:        #e8edf2;
+    --fg2:       #8da0b3;
+    --fg3:       #4d6070;
+    --accent:    #4d9eff;
+    --accent-bg: #0d1e35;
+    --green:     #2ecc7a;
+    --green-bg:  #0a1f15;
+    --amber:     #f59e0b;
+    --amber-bg:  #1f1500;
+    --red:       #ff5f5f;
+    --red-bg:    #200f0f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:        #0b0f14;
+  --surface:   #131a22;
+  --surface2:  #1a2330;
+  --border:    #232f3e;
+  --border2:   #1e2a38;
+  --fg:        #e8edf2;
+  --fg2:       #8da0b3;
+  --fg3:       #4d6070;
+  --accent:    #4d9eff;
+  --accent-bg: #0d1e35;
+  --green:     #2ecc7a;
+  --green-bg:  #0a1f15;
+  --amber:     #f59e0b;
+  --amber-bg:  #1f1500;
+  --red:       #ff5f5f;
+  --red-bg:    #200f0f;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 100;
+  flex-shrink: 0;
+}
+.brand {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.3px;
+}
+.brand span { color: var(--fg3); font-weight: 400; }
+.topbar-nav { display: flex; gap: 2px; }
+.tnav {
+  padding: 5px 12px;
+  border: none; border-radius: 5px;
+  background: transparent; color: var(--fg2);
+  font-family: var(--font-ui); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: background .13s, color .13s;
+}
+.tnav:hover { background: var(--surface2); color: var(--fg); }
+.tnav.active { background: var(--accent-bg); color: var(--accent); }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.env-badge {
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 3px 8px; border-radius: 4px;
+  background: var(--amber-bg); color: var(--amber);
+  border: 1px solid currentColor;
+  opacity: .8;
+}
+.run-btn {
+  padding: 6px 16px; border-radius: 5px; border: none;
+  background: var(--accent); color: #fff;
+  font-family: var(--font-ui); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity .13s;
+}
+.run-btn:hover { opacity: .85; }
+.run-btn:disabled { opacity: .4; cursor: default; }
+
+/* ── Tab panels ── */
+.panels { flex: 1; }
+.panel { display: none; padding: 24px 20px; }
+.panel.active { display: block; }
+
+/* ── Section label ── */
+.sec-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 1.5px; color: var(--fg3); text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* ── Pipeline tab ── */
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+@media (max-width: 680px) { .pipeline-grid { grid-template-columns: 1fr; } }
+
+.doc-queue { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.doc-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid transparent; transition: border-color .13s, background .13s;
+  margin-bottom: 6px;
+}
+.doc-item:last-child { margin-bottom: 0; }
+.doc-item:hover { background: var(--surface2); }
+.doc-item.selected { border-color: var(--accent); background: var(--accent-bg); }
+.doc-icon { font-size: 18px; flex-shrink: 0; }
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-meta { font-size: 11px; color: var(--fg3); font-family: var(--font-mono); }
+.doc-status { flex-shrink: 0; }
+
+.status-chip {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 10px; white-space: nowrap;
+}
+.chip-pending  { background: var(--surface2); color: var(--fg3); }
+.chip-running  { background: var(--accent-bg); color: var(--accent); }
+.chip-passed   { background: var(--green-bg); color: var(--green); }
+.chip-review   { background: var(--amber-bg); color: var(--amber); }
+.chip-failed   { background: var(--red-bg); color: var(--red); }
+
+/* ── Progress / detail panel ── */
+.detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.detail-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.detail-title { font-weight: 700; font-size: 14px; }
+.detail-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* pipeline steps */
+.step-list { display: flex; flex-direction: column; gap: 0; }
+.step {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 8px 0;
+  border-left: 2px solid var(--border2);
+  padding-left: 14px; margin-left: 8px;
+  position: relative;
+}
+.step::before {
+  content: '';
+  position: absolute; left: -5px; top: 12px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border); border: 2px solid var(--surface);
+  transition: background .2s;
+}
+.step.done::before  { background: var(--green); }
+.step.active::before { background: var(--accent); }
+.step.warn::before  { background: var(--amber); }
+.step.error::before { background: var(--red); }
+.step-name { font-size: 13px; font-weight: 600; flex: 1; }
+.step-detail { font-size: 11px; color: var(--fg2); font-family: var(--font-mono); margin-top: 2px; }
+.step-time { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); flex-shrink: 0; }
+
+/* ── Fields extraction table ── */
+.field-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.field-table th {
+  text-align: left; padding: 6px 10px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 1px; color: var(--fg3); text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.field-table td { padding: 7px 10px; border-bottom: 1px solid var(--border2); vertical-align: top; }
+.field-table tr:last-child td { border-bottom: none; }
+.field-name { font-family: var(--font-mono); font-weight: 500; color: var(--fg2); }
+.field-val { font-weight: 600; }
+.conf-bar-wrap { display: flex; align-items: center; gap: 7px; }
+.conf-bar { height: 5px; border-radius: 3px; background: var(--border2); flex: 1; min-width: 50px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.conf-high { background: var(--green); }
+.conf-mid  { background: var(--amber); }
+.conf-low  { background: var(--red); }
+.conf-num { font-family: var(--font-mono); font-size: 11px; color: var(--fg2); min-width: 32px; text-align: right; }
+
+/* ── Rules tab ── */
+.rules-grid { display: flex; flex-direction: column; gap: 8px; }
+.rule-row {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+  padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px;
+}
+.rule-num {
+  font-family: var(--font-mono); font-size: 11px; color: var(--fg3);
+  min-width: 28px; padding-top: 1px;
+}
+.rule-body { flex: 1; min-width: 0; }
+.rule-name { font-weight: 600; font-size: 13px; }
+.rule-desc { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+.rule-tag {
+  font-family: var(--font-mono); font-size: 10px;
+  padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle;
+}
+.tag-deterministic { background: var(--accent-bg); color: var(--accent); }
+.tag-cross-doc     { background: var(--amber-bg); color: var(--amber); }
+.rule-result { flex-shrink: 0; }
+
+/* ── Audit tab ── */
+.audit-log { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.audit-head { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.audit-head-label { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); }
+.audit-entry { padding: 9px 14px; border-bottom: 1px solid var(--border2); display: flex; gap: 12px; align-items: flex-start; }
+.audit-entry:last-child { border-bottom: none; }
+.audit-ts { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); flex-shrink: 0; padding-top: 1px; min-width: 85px; }
+.audit-level {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
+}
+.lvl-info  { background: var(--accent-bg); color: var(--accent); }
+.lvl-warn  { background: var(--amber-bg); color: var(--amber); }
+.lvl-error { background: var(--red-bg); color: var(--red); }
+.lvl-ok    { background: var(--green-bg); color: var(--green); }
+.audit-msg { font-size: 12px; flex: 1; min-width: 0; }
+.audit-meta { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); margin-top: 2px; }
+
+/* ── Infra tab ── */
+.infra-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.infra-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; display: flex; flex-direction: column; gap: 6px;
+}
+.infra-icon { font-size: 22px; }
+.infra-name { font-weight: 700; font-size: 13px; }
+.infra-role { font-size: 12px; color: var(--fg2); }
+.infra-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.infra-tag {
+  font-family: var(--font-mono); font-size: 10px;
+  padding: 1px 5px; border-radius: 3px;
+  background: var(--surface2); color: var(--fg3);
+  border: 1px solid var(--border);
+}
+
+/* stat row */
+.stat-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat-tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 16px; flex: 1; min-width: 100px;
+}
+.stat-num { font-family: var(--font-mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 11px; color: var(--fg3); margin-top: 2px; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand">DocVerify<span>/pipeline</span></div>
+  <nav class="topbar-nav">
+    <button class="tnav active" onclick="showTab('pipeline',this)">Pipeline</button>
+    <button class="tnav" onclick="showTab('rules',this)">Rules Engine</button>
+    <button class="tnav" onclick="showTab('audit',this)">Audit Trail</button>
+    <button class="tnav" onclick="showTab('infra',this)">Infrastructure</button>
+  </nav>
+  <div class="topbar-right">
+    <span class="env-badge">QA</span>
+    <button class="run-btn" id="run-btn" onclick="runPipeline()">▶ Run Pipeline</button>
+  </div>
+</div>
+
+<div class="panels">
+
+<!-- ══ PIPELINE TAB ══ -->
+<div class="panel active" id="tab-pipeline">
+
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-num" id="stat-total">5</div>
+      <div class="stat-label">Documents queued</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--green)" id="stat-passed">0</div>
+      <div class="stat-label">Auto-approved</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--amber)" id="stat-review">0</div>
+      <div class="stat-label">Routed to human review</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--red)" id="stat-failed">0</div>
+      <div class="stat-label">Rule violations</div>
+    </div>
+  </div>
+
+  <div class="pipeline-grid">
+    <!-- Doc queue -->
+    <div class="doc-queue">
+      <div class="sec-label">Document Queue</div>
+      <div id="doc-list"></div>
+    </div>
+
+    <!-- Detail -->
+    <div class="detail-card">
+      <div class="detail-head">
+        <span id="detail-icon">📄</span>
+        <span class="detail-title" id="detail-name">Select a document</span>
+        <span class="status-chip chip-pending" id="detail-chip" style="margin-left:auto">—</span>
+      </div>
+      <div class="detail-body" id="detail-body">
+        <div style="color:var(--fg3);font-size:13px;text-align:center;padding:24px 0;">
+          Click a document to inspect its pipeline state.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fields extraction -->
+  <div class="detail-card" id="fields-card" style="display:none;margin-top:0;">
+    <div class="detail-head">
+      <span class="detail-title">Extracted Fields — OCR + LayoutLMv3</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="field-table" id="fields-table">
+        <thead><tr>
+          <th>Field</th><th>Extracted Value</th><th>Confidence</th><th>Status</th>
+        </tr></thead>
+        <tbody id="fields-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /pipeline -->
+
+<!-- ══ RULES TAB ══ -->
+<div class="panel" id="tab-rules">
+  <div class="sec-label" style="margin-bottom:14px;">14 Deterministic Validation Policies — AI extracts, rules decide</div>
+  <div class="rules-grid" id="rules-list"></div>
+</div>
+
+<!-- ══ AUDIT TAB ══ -->
+<div class="panel" id="tab-audit">
+  <div class="sec-label" style="margin-bottom:12px;">Immutable audit log — every decision recorded with inputs, rule, outcome</div>
+  <div class="audit-log">
+    <div class="audit-head">
+      <span class="audit-head-label">TIMESTAMP</span>
+      <span class="audit-head-label" style="margin-left:88px;">LEVEL</span>
+      <span class="audit-head-label" style="margin-left:50px;">EVENT</span>
+    </div>
+    <div id="audit-entries"></div>
+  </div>
+</div>
+
+<!-- ══ INFRA TAB ══ -->
+<div class="panel" id="tab-infra">
+  <div class="sec-label" style="margin-bottom:14px;">AWS Serverless Stack — CDK (Python), deployed to client environment</div>
+  <div class="infra-grid">
+    <div class="infra-card">
+      <div class="infra-icon">🚪</div>
+      <div class="infra-name">API Gateway</div>
+      <div class="infra-role">REST endpoint receives document URLs from workflow engine</div>
+      <div class="infra-tags"><span class="infra-tag">WAF</span><span class="infra-tag">throttle</span><span class="infra-tag">idempotency-key</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">λ</div>
+      <div class="infra-name">Ingest Lambda</div>
+      <div class="infra-role">Validates request, writes job record to DynamoDB, pushes to SQS</div>
+      <div class="infra-tags"><span class="infra-tag">128 MB</span><span class="infra-tag">3s timeout</span><span class="infra-tag">least-priv IAM</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">🗂️</div>
+      <div class="infra-name">Amazon S3</div>
+      <div class="infra-role">Staging bucket for downloaded documents; KMS-encrypted at rest</div>
+      <div class="infra-tags"><span class="infra-tag">KMS-SSE</span><span class="infra-tag">lifecycle 30d</span><span class="infra-tag">versioned</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">λ</div>
+      <div class="infra-name">OCR Lambda</div>
+      <div class="infra-role">Runs LayoutLMv3 / TrOCR; returns structured fields + confidence scores</div>
+      <div class="infra-tags"><span class="infra-tag">3 GB RAM</span><span class="infra-tag">60s timeout</span><span class="infra-tag">HF model</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">⚖️</div>
+      <div class="infra-name">Rules Lambda</div>
+      <div class="infra-role">Pure Python deterministic engine — evaluates all 14 policies, no AI influence on verdict</div>
+      <div class="infra-tags"><span class="infra-tag">256 MB</span><span class="infra-tag">no ML</span><span class="infra-tag">auditable</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">🗄️</div>
+      <div class="infra-name">DynamoDB</div>
+      <div class="infra-role">Job state, extracted fields, rule outcomes, audit events — idempotent writes</div>
+      <div class="infra-tags"><span class="infra-tag">on-demand</span><span class="infra-tag">TTL 90d</span><span class="infra-tag">PITR</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">👤</div>
+      <div class="infra-name">Review Router</div>
+      <div class="infra-role">Cases below confidence threshold or with soft rule failures queued for human analyst</div>
+      <div class="infra-tags"><span class="infra-tag">SQS FIFO</span><span class="infra-tag">priority</span><span class="infra-tag">SLA timer</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">🔒</div>
+      <div class="infra-name">KMS + Secrets</div>
+      <div class="infra-role">All S3 objects encrypted; model keys, DB credentials in Secrets Manager</div>
+      <div class="infra-tags"><span class="infra-tag">envelope enc</span><span class="infra-tag">rotation</span><span class="infra-tag">CloudTrail</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">📊</div>
+      <div class="infra-name">CloudWatch + X-Ray</div>
+      <div class="infra-role">Per-document traces, latency/error dashboards, cost-per-case metric</div>
+      <div class="infra-tags"><span class="infra-tag">X-Ray traces</span><span class="infra-tag">custom metrics</span><span class="infra-tag">alarms</span></div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-icon">🏗️</div>
+      <div class="infra-name">AWS CDK (Python)</div>
+      <div class="infra-role">Three isolated stacks: dev / QA / prod — same code, environment-specific params</div>
+      <div class="infra-tags"><span class="infra-tag">dev</span><span class="infra-tag">QA</span><span class="infra-tag">prod</span></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /panels -->
+
+<script>
+/* ── Data ── */
+const DOCS = [
+  { id:'d1', icon:'🏢', name:'Articles of Incorporation', type:'corporate', size:'2.3 MB', status:'pending',
+    fields:[
+      {name:'company_name',    val:'Meridian Capital S.A.',  conf:0.97},
+      {name:'registration_no', val:'RC-2019-004821',         conf:0.94},
+      {name:'incorporation_date',val:'2019-03-14',           conf:0.91},
+      {name:'legal_representative',val:'Carlos Reyes Mora', conf:0.88},
+      {name:'registered_capital',val:'USD 500,000',          conf:0.76},
+      {name:'jurisdiction',    val:'Panama',                 conf:0.99},
+    ],
+    rules:[0,1,2,5,6,11,12,13],
+    outcome:'passed'
+  },
+  { id:'d2', icon:'🪪', name:'Director ID — Reyes Mora', type:'kyc', size:'1.1 MB', status:'pending',
+    fields:[
+      {name:'full_name',     val:'Carlos Reyes Mora',  conf:0.96},
+      {name:'id_number',     val:'8-742-1901',         conf:0.93},
+      {name:'date_of_birth', val:'1978-06-22',         conf:0.89},
+      {name:'expiry_date',   val:'2027-06-21',         conf:0.92},
+      {name:'nationality',   val:'Panamanian',         conf:0.97},
+      {name:'issuing_country',val:'Panama',            conf:0.99},
+    ],
+    rules:[3,4,7,8],
+    outcome:'passed'
+  },
+  { id:'d3', icon:'🧾', name:'Bank Statement — Oct 2024', type:'financial', size:'4.7 MB', status:'pending',
+    fields:[
+      {name:'account_holder', val:'Meridian Capital S.A.', conf:0.91},
+      {name:'account_number', val:'****-****-4821',        conf:0.95},
+      {name:'bank_name',      val:'Banco General',         conf:0.98},
+      {name:'statement_period',val:'Oct 1–31 2024',        conf:0.44},
+      {name:'closing_balance',val:'USD 87,420.00',         conf:0.79},
+      {name:'currency',       val:'USD',                   conf:0.99},
+    ],
+    rules:[9,10,11],
+    outcome:'review'
+  },
+  { id:'d4', icon:'📑', name:'Tax Certificate 2023', type:'compliance', size:'0.8 MB', status:'pending',
+    fields:[
+      {name:'tax_id',       val:'NT-204-88312',        conf:0.92},
+      {name:'period',       val:'FY 2023',             conf:0.97},
+      {name:'entity_name',  val:'Meridien Capital S.A.',conf:0.62},
+      {name:'issue_date',   val:'2024-02-28',          conf:0.88},
+      {name:'status',       val:'GOOD STANDING',       conf:0.95},
+      {name:'authority',    val:'DGI Panama',          conf:0.96},
+    ],
+    rules:[0,1,5,6,12],
+    outcome:'failed'
+  },
+  { id:'d5', icon:'📋', name:'Ownership Structure Chart', type:'corporate', size:'3.2 MB', status:'pending',
+    fields:[
+      {name:'ultimate_beneficiary',val:'Elena Sorokina',  conf:0.81},
+      {name:'ownership_pct',       val:'100%',            conf:0.87},
+      {name:'jurisdiction',        val:'Panama',          conf:0.99},
+      {name:'intermediate_entity', val:'Crestline Ltd.',  conf:0.73},
+      {name:'document_date',       val:'2024-09-01',      conf:0.90},
+    ],
+    rules:[2,6,7,13],
+    outcome:'review'
+  },
+];
+
+const RULES = [
+  {n:'R01',name:'Entity Name Consistency',desc:'Company name must match across all submitted documents (exact or normalized match).',tag:'cross-doc'},
+  {n:'R02',name:'Registration Number Format',desc:'Registration number must match the jurisdiction\'s official format (regex validation).',tag:'deterministic'},
+  {n:'R03',name:'Beneficial Ownership Declared',desc:'Ultimate beneficial owner(s) must be explicitly declared with name and ownership percentage.',tag:'deterministic'},
+  {n:'R04',name:'ID Document Not Expired',desc:'All identity documents must have an expiry date at least 30 days beyond submission date.',tag:'deterministic'},
+  {n:'R05',name:'ID Number Format Valid',desc:'National ID / passport number must match the issuing country\'s known format.',tag:'deterministic'},
+  {n:'R06',name:'Incorporation Date ≥ 3 Years',desc:'Entity must have been incorporated at least 3 years prior to application date.',tag:'deterministic'},
+  {n:'R07',name:'Jurisdiction Not Blacklisted',desc:'Entity jurisdiction must not appear on FATF high-risk or EU AMLD blacklist.',tag:'deterministic'},
+  {n:'R08',name:'PEP / Sanctions Screening',desc:'All named persons must return negative on PEP and sanctions list lookup.',tag:'deterministic'},
+  {n:'R09',name:'DOB vs ID Consistency',desc:'Date of birth on ID must match date of birth in KYC form (within 1-day tolerance).',tag:'cross-doc'},
+  {n:'R10',name:'Bank Statement Period',desc:'Statement must cover a continuous 3-month period ending no more than 60 days before submission.',tag:'deterministic'},
+  {n:'R11',name:'Statement Account Holder Match',desc:'Account holder name on bank statement must match entity name or director name.',tag:'cross-doc'},
+  {n:'R12',name:'Minimum Capital Threshold',desc:'Declared registered capital must meet the minimum required for the license category.',tag:'deterministic'},
+  {n:'R13',name:'Tax Good Standing',desc:'Tax certificate must show GOOD STANDING status for the most recent complete fiscal year.',tag:'deterministic'},
+  {n:'R14',name:'Document Completeness Score',desc:'Each document must pass an AI completeness check — all required fields extracted with conf ≥ 0.60.',tag:'deterministic'},
+];
+
+const ruleResults = {}; // docId → {ruleIdx: 'pass'|'fail'|'warn'}
+
+/* pre-set rule outcomes per doc */
+const RULE_OUTCOMES = {
+  d1:{ 0:'pass',1:'pass',2:'pass',5:'pass',6:'pass',11:'pass',12:'pass',13:'pass' },
+  d2:{ 3:'pass',4:'pass',7:'pass',8:'pass' },
+  d3:{ 9:'warn',10:'pass',11:'warn' },   // low conf on statement_period triggers warn
+  d4:{ 0:'fail',1:'pass',5:'pass',6:'pass',12:'pass' }, // name mismatch → fail
+  d5:{ 2:'pass',6:'pass',7:'pass',13:'warn' },
+};
+
+let selectedDoc = null;
+let running = false;
+let auditLog = [];
+
+/* ── Render doc list ── */
+function renderDocList() {
+  const el = document.getElementById('doc-list');
+  el.innerHTML = '';
+  DOCS.forEach(doc => {
+    const d = document.createElement('div');
+    d.className = 'doc-item' + (selectedDoc === doc.id ? ' selected' : '');
+    d.onclick = () => selectDoc(doc.id);
+    const chip = chipFor(doc.status);
+    d.innerHTML = `
+      <span class="doc-icon">${doc.icon}</span>
+      <div class="doc-info">
+        <div class="doc-name">${doc.name}</div>
+        <div class="doc-meta">${doc.type} · ${doc.size}</div>
+      </div>
+      <div class="doc-status"><span class="status-chip ${chip.cls}">${chip.label}</span></div>`;
+    el.appendChild(d);
+  });
+}
+
+function chipFor(status) {
+  return {
+    pending: {cls:'chip-pending',  label:'PENDING'},
+    running: {cls:'chip-running',  label:'RUNNING'},
+    passed:  {cls:'chip-passed',   label:'APPROVED'},
+    review:  {cls:'chip-review',   label:'HUMAN REVIEW'},
+    failed:  {cls:'chip-failed',   label:'REJECTED'},
+  }[status] || {cls:'chip-pending', label:status.toUpperCase()};
+}
+
+/* ── Select doc ── */
+function selectDoc(id) {
+  selectedDoc = id;
+  renderDocList();
+  const doc = DOCS.find(d => d.id === id);
+  document.getElementById('detail-icon').textContent = doc.icon;
+  document.getElementById('detail-name').textContent = doc.name;
+  const chip = chipFor(doc.status);
+  const chipEl = document.getElementById('detail-chip');
+  chipEl.className = 'status-chip ' + chip.cls;
+  chipEl.textContent = chip.label;
+  renderSteps(doc);
+  renderFields(doc);
+}
+
+function renderSteps(doc) {
+  const body = document.getElementById('detail-body');
+  const steps = [
+    {name:'URL received & validated',      detail:'Idempotency key checked · job_id assigned',     done: doc.status !== 'pending', t:'0ms'},
+    {name:'Document downloaded → S3',      detail:`s3://docverify-qa/staging/${doc.id}.pdf`,        done: doc.status !== 'pending', t:'340ms'},
+    {name:'OCR — LayoutLMv3 extraction',   detail:`${doc.fields.length} fields extracted`,         done: doc.status !== 'pending' && doc.status !== 'running', t:'2.1s'},
+    {name:'Confidence scoring',            detail:`Min conf: ${Math.min(...doc.fields.map(f=>f.conf)).toFixed(2)} · ${doc.fields.filter(f=>f.conf<0.70).length} low-conf fields`, done: doc.status === 'passed'||doc.status==='review'||doc.status==='failed', t:'18ms'},
+    {name:'Rules engine (14 policies)',    detail:`${(RULE_OUTCOMES[doc.id]||{})} evaluated`,       done: doc.status === 'passed'||doc.status==='review'||doc.status==='failed', t:'6ms'},
+    {name:'Routing decision',              detail: doc.status==='passed'?'Auto-approved':doc.status==='review'?'Queued for human review':'Rule violation → rejected', done: doc.status === 'passed'||doc.status==='review'||doc.status==='failed', t:'2ms'},
+  ];
+  const cls = {passed:'done', review: steps.indexOf(steps[5]) >= 0 ? 'warn' : 'done', failed:'error', running:'active', pending:''};
+  body.innerHTML = '<div class="step-list">' + steps.map((s,i) => {
+    let sc = '';
+    if(s.done) {
+      if(i===5) sc = doc.status==='passed'?'done':doc.status==='review'?'warn':'error';
+      else sc = 'done';
+    } else if(doc.status==='running') sc = 'active';
+    return `<div class="step ${sc}">
+      <div style="flex:1;min-width:0">
+        <div class="step-name">${s.name}</div>
+        ${s.done||doc.status==='running'?`<div class="step-detail">${s.detail}</div>`:''}
+      </div>
+      ${s.done?`<div class="step-time">${s.t}</div>`:''}
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderFields(doc) {
+  const card = document.getElementById('fields-card');
+  if(doc.status === 'pending') { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const tbody = document.getElementById('fields-body');
+  tbody.innerHTML = doc.fields.map(f => {
+    const pct = Math.round(f.conf * 100);
+    const cls = f.conf >= 0.80 ? 'conf-high' : f.conf >= 0.65 ? 'conf-mid' : 'conf-low';
+    const statusTxt = f.conf >= 0.80 ? `<span style="color:var(--green);font-family:var(--font-mono);font-size:11px;">✓ OK</span>`
+                    : f.conf >= 0.65 ? `<span style="color:var(--amber);font-family:var(--font-mono);font-size:11px;">⚠ LOW</span>`
+                    :                  `<span style="color:var(--red);font-family:var(--font-mono);font-size:11px;">✕ FLAG</span>`;
+    return `<tr>
+      <td class="field-name">${f.name}</td>
+      <td class="field-val">${f.val}</td>
+      <td><div class="conf-bar-wrap">
+        <div class="conf-bar"><div class="conf-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="conf-num">${pct}%</span>
+      </div></td>
+      <td>${statusTxt}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Render rules ── */
+function renderRules(activeDoc) {
+  const el = document.getElementById('rules-list');
+  el.innerHTML = RULES.map((r, i) => {
+    let resultHTML = '';
+    if(activeDoc && RULE_OUTCOMES[activeDoc] && RULE_OUTCOMES[activeDoc][i] !== undefined) {
+      const o = RULE_OUTCOMES[activeDoc][i];
+      resultHTML = o==='pass' ? `<span class="status-chip chip-passed" style="font-size:11px">PASS</span>`
+                 : o==='fail' ? `<span class="status-chip chip-failed" style="font-size:11px">FAIL</span>`
+                 :              `<span class="status-chip chip-review" style="font-size:11px">WARN</span>`;
+    }
+    const tagCls = r.tag === 'cross-doc' ? 'tag-cross-doc' : 'tag-deterministic';
+    return `<div class="rule-row">
+      <div class="rule-num">${r.n}</div>
+      <div class="rule-body">
+        <div class="rule-name">${r.name} <span class="rule-tag ${tagCls}">${r.tag}</span></div>
+        <div class="rule-desc">${r.desc}</div>
+      </div>
+      <div class="rule-result">${resultHTML}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Audit log ── */
+function addAudit(ts, level, msg, meta) {
+  auditLog.push({ts, level, msg, meta});
+  renderAudit();
+}
+function renderAudit() {
+  const el = document.getElementById('audit-entries');
+  el.innerHTML = [...auditLog].reverse().map(e => {
+    const lcls = {info:'lvl-info',warn:'lvl-warn',error:'lvl-error',ok:'lvl-ok'}[e.level]||'lvl-info';
+    return `<div class="audit-entry">
+      <div class="audit-ts">${e.ts}</div>
+      <div class="audit-level ${lcls}">${e.level.toUpperCase()}</div>
+      <div class="audit-msg">${e.msg}${e.meta?`<div class="audit-meta">${e.meta}</div>`:''}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Pipeline run ── */
+function runPipeline() {
+  if(running) return;
+  running = true;
+  document.getElementById('run-btn').disabled = true;
+  // reset
+  DOCS.forEach(d => { d.status = 'pending'; });
+  updateStats();
+  renderDocList();
+  if(selectedDoc) selectDoc(selectedDoc);
+  auditLog = [];
+  addAudit(ts(), 'info', 'Pipeline triggered', 'trigger=api_gateway · batch_id=BTC-2024-1007-001');
+
+  let i = 0;
+  function next() {
+    if(i >= DOCS.length) {
+      running = false;
+      document.getElementById('run-btn').disabled = false;
+      addAudit(ts(), 'ok', 'Batch complete', `passed=${DOCS.filter(d=>d.status==='passed').length} review=${DOCS.filter(d=>d.status==='review').length} failed=${DOCS.filter(d=>d.status==='failed').length}`);
+      updateStats();
+      return;
+    }
+    const doc = DOCS[i];
+    doc.status = 'running';
+    renderDocList();
+    if(selectedDoc === doc.id) selectDoc(doc.id);
+    addAudit(ts(), 'info', `Processing: ${doc.name}`, `job_id=${doc.id} · size=${doc.size}`);
+
+    setTimeout(() => {
+      addAudit(ts(), 'info', `OCR complete: ${doc.name}`, `fields=${doc.fields.length} · model=layoutlmv3-base`);
+      const lowConf = doc.fields.filter(f => f.conf < 0.70);
+      if(lowConf.length) addAudit(ts(), 'warn', `Low-confidence fields detected`, `fields=[${lowConf.map(f=>f.name).join(', ')}] · threshold=0.70`);
+
+      setTimeout(() => {
+        doc.status = doc.outcome;
+        const outcome = RULE_OUTCOMES[doc.id] || {};
+        const fails = Object.values(outcome).filter(v=>v==='fail');
+        const warns = Object.values(outcome).filter(v=>v==='warn');
+        if(fails.length) addAudit(ts(), 'error', `Rule violation — ${doc.name}`, `failed_rules=${fails.length} · action=REJECT`);
+        else if(warns.length || doc.status==='review') addAudit(ts(), 'warn', `Routed to human review — ${doc.name}`, `warnings=${warns.length} · low_conf=${lowConf.length}`);
+        else addAudit(ts(), 'ok', `Auto-approved — ${doc.name}`, `rules_passed=${Object.keys(outcome).length} · conf_ok=true`);
+
+        renderDocList();
+        if(selectedDoc === doc.id) selectDoc(doc.id);
+        updateStats();
+        i++;
+        setTimeout(next, 600);
+      }, 900);
+    }, 700);
+  }
+  setTimeout(next, 200);
+}
+
+function updateStats() {
+  document.getElementById('stat-passed').textContent = DOCS.filter(d=>d.status==='passed').length;
+  document.getElementById('stat-review').textContent = DOCS.filter(d=>d.status==='review').length;
+  document.getElementById('stat-failed').textContent = DOCS.filter(d=>d.status==='failed').length;
+}
+
+function ts() {
+  const now = new Date();
+  return now.toISOString().slice(11,23);
+}
+
+/* ── Tab switching ── */
+function showTab(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tnav').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id === 'rules') renderRules(selectedDoc);
+}
+
+/* ── Init ── */
+renderDocList();
+renderRules(null);
+renderAudit();
+selectDoc('d1');
+</script>
